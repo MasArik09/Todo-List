@@ -7,6 +7,7 @@ use App\Http\Requests\UpdateTaskRequest;
 use App\Models\Task;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class TaskController extends Controller
@@ -16,30 +17,44 @@ class TaskController extends Controller
      */
     public function index(Request $request): View
     {
+        $validated = $request->validate([
+            'search' => ['nullable', 'string', 'max:255'],
+            'status' => ['nullable', 'string', 'in:Pending,Completed'],
+            'priority' => ['nullable', 'string', 'in:Low,Medium,High'],
+            'category_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('categories', 'id')->where(function ($query) use ($request) {
+                    $query->where('user_id', $request->user()->id);
+                }),
+            ],
+            'overdue' => ['nullable', 'boolean'],
+        ]);
+
         $query = $request->user()->tasks()->with('category');
 
         // Search by title
-        if ($request->filled('search')) {
-            $query->where('title', 'like', '%'.$request->search.'%');
+        if (! empty($validated['search'])) {
+            $query->where('title', 'like', '%'.$validated['search'].'%');
         }
 
         // Filter by status
-        if ($request->filled('status')) {
-            $query->where('status', $request->status);
+        if (! empty($validated['status'])) {
+            $query->where('status', $validated['status']);
         }
 
         // Filter by priority
-        if ($request->filled('priority')) {
-            $query->where('priority', $request->priority);
+        if (! empty($validated['priority'])) {
+            $query->where('priority', $validated['priority']);
         }
 
         // Filter by category
-        if ($request->filled('category_id')) {
-            $query->where('category_id', $request->category_id);
+        if (! empty($validated['category_id'])) {
+            $query->where('category_id', $validated['category_id']);
         }
 
         // Filter by overdue (Pending and due_date < today)
-        if ($request->boolean('overdue')) {
+        if (! empty($validated['overdue'])) {
             $query->where('status', 'Pending')
                 ->whereNotNull('due_date')
                 ->where('due_date', '<', today());
